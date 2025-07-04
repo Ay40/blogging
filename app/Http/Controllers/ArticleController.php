@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Http\Requests\StoreUpdateArticleRequest;
 use App\Models\Article;
 use App\Models\Category;
 use Illuminate\Http\Request;
@@ -9,6 +10,9 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 use App\Models\Tag;
+
+
+
 
 class ArticleController extends Controller
 {
@@ -84,52 +88,11 @@ class ArticleController extends Controller
 
 
 
-// Update the store method
-// public function store(Request $request)
-// {
-//     $request->validate([
-//         'title' => 'required|max:255',
-//         'body' => 'required',
-//         'category_id' => 'required|exists:categories,id',
-//         'image' => 'nullable|image|mimes:jpeg,png,jpg,gif|max:2048',
-//         'tags' => 'nullable|string',
-//     ]);
-//     $imageName = 'default.jpg'; 
-
-//      if ($request->hasFile('image')) {
 
 
-//         $imageName = time() . '.' . $request->image->extension();
-//         $request->image->move(public_path('images'), $imageName);
-//     }
-    
-//     Article::create([
-//         'title' => $request->title,
-//         'body' => $request->body,
-//         'category_id' => $request->category_id,
-//         'image' => $imageName,
-//     ]);
-//     return redirect()->route('articles.index')
-//         ->with('success', 'Article created successfully.');
-// }
-
-
-public function store(Request $request)
+public function store(StoreUpdateArticleRequest $request)
 {
-    $request->validate([
-        'title' => 'required',
-        'body' => 'required',
-        'category_id' => 'required|exists:categories,id',
-        'image' => 'nullable|image|mimes:jpeg,png,jpg,gif|max:2048',
-        'tags' => 'nullable|array',
-        'tags.*' => 'exists:tags,id',
-    ]);
-
-    $imageName = 'default.jpg';
-    if ($request->hasFile('image')) {
-        $imageName = time() . '.' . $request->image->extension();
-        $request->image->move(public_path('images'), $imageName);
-    }
+    $imageName = $this->handleImageUpload($request);
 
     $article = Article::create([
         'title' => $request->title,
@@ -138,12 +101,13 @@ public function store(Request $request)
         'image' => $imageName,
     ]);
 
-    if ($request->has('tags')) {
+    if ($request->filled('tags')) {
         $article->tags()->attach($request->tags);
     }
 
     return redirect()->route('articles.index')->with('success', 'Article created successfully.');
 }
+
 
 
 public function edit(Article $article)
@@ -154,30 +118,9 @@ public function edit(Article $article)
     return view('articles.edit', compact('article', 'categories', 'tags'));
 }
 
-public function update(Request $request, Article $article)
+public function update(StoreUpdateArticleRequest $request, Article $article)
 {
-    $request->validate([
-        'title' => 'required',
-        'body' => 'required',
-        'category_id' => 'required|exists:categories,id',
-        'image' => 'nullable|image|mimes:jpeg,png,jpg,gif|max:2048',
-        'tags' => 'nullable|array',
-        'tags.*' => 'exists:tags,id',
-    ]);
-
-    $imageName = $article->image;
-    if ($request->hasFile('image')) {
-        // Delete old image if it's not the default
-        if ($imageName !== 'default.jpg') {
-            $oldImagePath = public_path('images/' . $imageName);
-            if (file_exists($oldImagePath)) {
-                unlink($oldImagePath);
-            }
-        }
-        
-        $imageName = time() . '.' . $request->image->extension();
-        $request->image->move(public_path('images'), $imageName);
-    }
+    $imageName = $this->handleImageUpload($request, $article->image);
 
     $article->update([
         'title' => $request->title,
@@ -186,15 +129,33 @@ public function update(Request $request, Article $article)
         'image' => $imageName,
     ]);
 
-    // Sync tags
-    if ($request->has('tags')) {
-        $article->tags()->sync($request->tags);
-    } else {
-        $article->tags()->detach();
-    }
+    $article->tags()->sync($request->input('tags', []));
 
     return redirect()->route('articles.index')->with('success', 'Article updated successfully.');
 }
+
+
+
+protected function handleImageUpload($request, $currentImage = 'default.jpg')
+{
+    if ($request->hasFile('image')) {
+        // Delete old image if it's not the default one
+        if ($currentImage !== 'default.jpg') {
+            $oldImagePath = public_path('images/' . $currentImage);
+            if (file_exists($oldImagePath)) {
+                unlink($oldImagePath);
+            }
+        }
+
+        // Store new image
+        $imageName = time() . '.' . $request->image->extension();
+        $request->image->move(public_path('images'), $imageName);
+        return $imageName;
+    }
+
+    return $currentImage;
+}
+
 
 
 public function destroy(Article $article)
